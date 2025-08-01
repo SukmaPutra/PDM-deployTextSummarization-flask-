@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Text Summarizer (Extractive & Abstractive)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+            color: #333;
+        }
+        .container {
+            max-width: 900px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background-color: #fff;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .form-group label {
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 0.5rem;
+            display: block;
+        }
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #e2e8f0;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        .form-control:focus {
+            outline: none;
+            border-color: #6366f1;
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+        }
+        .btn-primary {
+            background-color: #6366f1;
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            transition: background-color 0.2s, transform 0.1s;
+            cursor: pointer;
+            border: none;
+        }
+        .btn-primary:hover {
+            background-color: #4f46e5;
+            transform: translateY(-1px);
+        }
+        .alert {
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+        .alert-success { background-color: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+        .alert-warning { background-color: #fffbeb; color: #92400e; border: 1px solid #fcd34d; }
+        .alert-error { background-color: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+
+        /* Hide/Show logic for input source and summary type options */
+        #url_input_group, #extractive_options, #abstractive_options {
+            display: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+    <div class="container">
+        <h1 class="text-4xl font-extrabold text-center text-gray-800 mb-6">📝 Text Summarizer</h1>
+        <p class="text-center text-gray-600 mb-8">Aplikasi ini memungkinkan Anda memilih antara peringkasan <span class="font-semibold">extractive</span> (TextRank) dan <span class="font-semibold">abstractive</span> (IndoBART).</p>
+        <hr class="my-8 border-gray-300">
+
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="mb-4">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" action="/" class="space-y-6">
+            <!-- Pilihan Sumber Teks -->
+            <div class="form-group">
+                <label class="block text-lg mb-2">Pilih sumber teks:</label>
+                <div class="flex items-center space-x-4">
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="input_source_radio" value="manual" class="form-radio text-indigo-600" checked onchange="toggleInputSource()">
+                        <span class="ml-2 text-gray-700">Masukkan Teks Manual</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="input_source_radio" value="url" class="form-radio text-indigo-600" onchange="toggleInputSource()">
+                        <span class="ml-2 text-gray-700">Dari URL Artikel</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Input Teks Manual -->
+            <div id="manual_input_group" class="form-group">
+                <label for="user_input_text">Masukkan teks yang ingin diringkas di sini:</label>
+                <textarea id="user_input_text" name="user_input_text" rows="10" class="form-control" placeholder="Contoh: Presiden Susilo Bambang Yudhoyono siang nanti dijadwalkan berpidato di hadapan para prajurit dan perwira TNI di Markas Besar TNI Cilangkap, Jakarta Timur. Pidato Presiden terkait dengan peringatan Hari Ulang Tahun ke-60 TNI. Keterangan ini disampaikan Panglima TNI Marsekal Djoko Suyanto di Jakarta, Kamis (5/10). Yudhoyono rencananya akan tiba di Cilangkap sekitar pukul 14.00 WIB. Selain presiden, purnawirawan TNI serta keluarga prajurit juga akan menghadiri acara yang digelar di Lapangan Udara Cilangkap ini. Menurut Djoko, pidato ini merupakan kegiatan rutin yang dilakukan presiden setiap peringatan hari ulang tahun TNI. Selain itu juga sebagai sarana komunikasi antarpimpinan negara dan militer. (DNP/Tim Liputan 6 SCTV)">{{ user_input_text_val if user_input_text_val else '' }}</textarea>
+            </div>
+
+            <!-- Input URL Artikel -->
+            <div id="url_input_group" class="form-group">
+                <label for="article_url_input">Masukkan URL artikel yang ingin diringkas:</label>
+                <input type="text" id="article_url_input" name="article_url_input" class="form-control" placeholder="Contoh: https://www.kompas.com/..., https://www.detik.com/...">
+                {% if extracted_text_preview %}
+                    <div class="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                        <h4 class="font-semibold text-gray-700 mb-2">Pratinjau Teks yang Diambil:</h4>
+                        <p class="text-sm text-gray-600">{{ extracted_text_preview }}</p>
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Pilihan Jenis Peringkasan -->
+            <div class="form-group">
+                <label class="block text-lg mb-2">Pilih Jenis Peringkasan:</label>
+                <div class="flex items-center space-x-4">
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="summary_type_radio" value="Extractive (TextRank)" class="form-radio text-indigo-600" {% if summary_type_selected == 'Extractive (TextRank)' %}checked{% endif %} onchange="toggleSummaryOptions()">
+                        <span class="ml-2 text-gray-700">Extractive (TextRank)</span>
+                    </label>
+                    <label class="inline-flex items-center">
+                        <input type="radio" name="summary_type_radio" value="Abstractive (IndoBART)" class="form-radio text-indigo-600" {% if summary_type_selected == 'Abstractive (IndoBART)' %}checked{% endif %} onchange="toggleSummaryOptions()">
+                        <span class="ml-2 text-gray-700">Abstractive (IndoBART)</span>
+                    </label>
+                </div>
+                <p class="text-sm text-gray-500 mt-2">*Extractive*: Memilih kalimat kunci dari teks asli. *Abstractive*: Membuat kalimat baru yang meringkas ide utama.</p>
+            </div>
+
+            <!-- Opsi Panjang Ringkasan Extractive -->
+            <div id="extractive_options" class="form-group">
+                <label for="extractive_word_count">Panjang Ringkasan Target (Jumlah Kata untuk TextRank):</label>
+                <input type="number" id="extractive_word_count" name="extractive_word_count" class="form-control" min="10" max="200" step="5" value="{{ extractive_word_count }}">
+                <p class="text-sm text-gray-500 mt-2">Pilih jumlah kata yang Anda inginkan untuk ringkasan. Model akan mencoba mendekati jumlah ini.</p>
+            </div>
+
+            <!-- Opsi Panjang Ringkasan Abstractive -->
+            <div id="abstractive_options" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="form-group">
+                    <label for="abstractive_min_length">Panjang Minimum (Kata untuk IndoBART):</label>
+                    <input type="number" id="abstractive_min_length" name="abstractive_min_length" class="form-control" min="10" max="100" step="5" value="{{ abstractive_min_length }}">
+                    <p class="text-sm text-gray-500 mt-2">Jumlah kata minimum untuk ringkasan abstrak.</p>
+                </div>
+                <div class="form-group">
+                    <label for="abstractive_max_length">Panjang Maksimum (Kata untuk IndoBART):</label>
+                    <input type="number" id="abstractive_max_length" name="abstractive_max_length" class="form-control" min="50" max="300" step="5" value="{{ abstractive_max_length }}">
+                    <p class="text-sm text-gray-500 mt-2">Jumlah kata maksimum untuk ringkasan abstrak.</p>
+                </div>
+            </div>
+
+            <button type="submit" class="btn-primary w-full">Ringkas Teks</button>
+        </form>
+
+        <!-- Hasil Ringkasan -->
+        {% if summary_result %}
+            <div class="mt-8 p-6 bg-blue-50 rounded-lg border border-blue-200">
+                <h2 class="text-2xl font-bold text-blue-800 mb-4">Hasil Ringkasan:</h2>
+                <p class="text-blue-700 leading-relaxed">{{ summary_result }}</p>
+                <div class="mt-4 text-sm text-blue-600">
+                    <p>Jenis Ringkasan: <span class="font-semibold">{{ summary_type_selected }}</span></p>
+                    <p>Total Kata Ringkasan: <span class="font-semibold">{{ summary_result.split() | length }}</span></p>
+                    <p>Status: <span class="font-semibold">{{ summary_status }}</span></p>
+                </div>
+            </div>
+        {% endif %}
+
+        <hr class="my-8 border-gray-300">
+        <p class="text-center text-gray-500 text-sm">Dibuat dengan ❤️ oleh Sukma Apri Ananda Putra - UAS PDM 2025</p>
+    </div>
+
+    <script>
+        // Fungsi untuk mengontrol visibilitas input sumber teks
+        function toggleInputSource() {
+            const manualInput = document.getElementById('manual_input_group');
+            const urlInput = document.getElementById('url_input_group');
+            const manualRadio = document.querySelector('input[name="input_source_radio"][value="manual"]');
+
+            if (manualRadio.checked) {
+                manualInput.style.display = 'block';
+                urlInput.style.display = 'none';
+            } else {
+                manualInput.style.display = 'none';
+                urlInput.style.display = 'block';
+            }
+        }
+
+        // Fungsi untuk mengontrol visibilitas opsi ringkasan
+        function toggleSummaryOptions() {
+            const extractiveOptions = document.getElementById('extractive_options');
+            const abstractiveOptions = document.getElementById('abstractive_options');
+            const extractiveRadio = document.querySelector('input[name="summary_type_radio"][value="Extractive (TextRank)"]');
+
+            if (extractiveRadio.checked) {
+                extractiveOptions.style.display = 'block';
+                abstractiveOptions.style.display = 'none';
+            } else {
+                extractiveOptions.style.display = 'none';
+                abstractiveOptions.style.display = 'grid'; // Use grid for columns
+            }
+        }
+
+        // Panggil fungsi saat halaman dimuat untuk mengatur tampilan awal
+        document.addEventListener('DOMContentLoaded', () => {
+            toggleInputSource();
+            toggleSummaryOptions();
+        });
+    </script>
+</body>
+</html>
